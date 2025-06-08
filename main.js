@@ -162,24 +162,68 @@ class SecureFormMonitor {
         this.startContinuousMonitoring();
     }
     
-    setupEnhancedMobileDetection() {
-        let lastWidth = window.innerWidth;
-        let lastHeight = window.innerHeight;
-        let orientationChangeTimeout;
+   setupEnhancedMobileDetection() {
+    let lastWidth = window.innerWidth;
+    let lastHeight = window.innerHeight;
+    let orientationChangeTimeout;
+    let keyboardTimeout;
+    let isKeyboardOpen = false;
+    const detectVirtualKeyboard = () => {
+        const viewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+        const windowHeight = window.innerHeight;
+        const heightDifference = windowHeight - viewportHeight;
         
-        const checkScreenSize = () => {
-            const currentWidth = window.innerWidth;
-            const currentHeight = window.innerHeight;
-            const tolerance = this.tolerances.mobile;
-            
-            // Periksa perubahan yang signifikan (bukan karena keyboard virtual)
-            const widthChange = Math.abs(currentWidth - lastWidth);
-            const heightChange = Math.abs(currentHeight - lastHeight);
-            
+        // Jika perbedaan tinggi > 150px, kemungkinan keyboard terbuka
+        const keyboardThreshold = 150;
+        const wasKeyboardOpen = isKeyboardOpen;
+        isKeyboardOpen = heightDifference > keyboardThreshold;
+        
+        // Log perubahan status keyboard untuk debugging
+        if (wasKeyboardOpen !== isKeyboardOpen) {
+            console.log(`Keyboard ${isKeyboardOpen ? 'opened' : 'closed'} - Height diff: ${heightDifference}px`);
+        }
+        
+        return isKeyboardOpen;
+    };
+    
+    const checkScreenSize = () => {
+        const currentWidth = window.innerWidth;
+        const currentHeight = window.innerHeight;
+        const tolerance = this.tolerances.mobile;
+        
+        // Deteksi keyboard terlebih dahulu
+        const keyboardActive = detectVirtualKeyboard();
+        
+        // Periksa perubahan yang signifikan
+        const widthChange = Math.abs(currentWidth - lastWidth);
+        const heightChange = Math.abs(currentHeight - lastHeight);
+        
+        console.log(`Screen check - Width: ${currentWidth} (Δ${widthChange}), Height: ${currentHeight} (Δ${heightChange}), Keyboard: ${keyboardActive}`);
+        
+        // PERBAIKAN UTAMA: Abaikan perubahan tinggi jika keyboard aktif
+        if (keyboardActive) {
+            // Hanya periksa perubahan lebar untuk split-screen horizontal
+            if (widthChange > tolerance.width) {
+                // Periksa juga apakah lebar berkurang signifikan (indikasi split-screen)
+                const widthReduction = (lastWidth - currentWidth) / lastWidth;
+                if (widthReduction > 0.25) { // Jika lebar berkurang lebih dari 25%
+                    this.isSplitScreenActive = true;
+                    this.handleViolation('Split-screen horizontal detected while keyboard active');
+                }
+            }
+        } else {
+            // Keyboard tidak aktif, periksa split-screen normal
             // Lebih ketat untuk deteksi split-screen
             if (widthChange > tolerance.width && heightChange > tolerance.height) {
-                this.isSplitScreenActive = true;
-                this.handleViolation('Split-screen/Multi-window detected on mobile');
+                // Periksa juga rasio perubahan untuk memastikan ini split-screen
+                const widthReduction = (lastWidth - currentWidth) / lastWidth;
+                const heightReduction = (lastHeight - currentHeight) / lastHeight;
+                
+                // Split-screen biasanya mengurangi salah satu dimensi secara signifikan
+                if (widthReduction > 0.2 || heightReduction > 0.2) {
+                    this.isSplitScreenActive = true;
+                    this.handleViolation('Split-screen/Multi-window detected on mobile');
+                }
             } else if (widthChange <= 10 && heightChange <= 10) {
                 // Reset hanya jika kembali ke ukuran normal
                 if (this.isSplitScreenActive) {
@@ -187,73 +231,127 @@ class SecureFormMonitor {
                     console.log('Split-screen deactivated - screen returned to normal');
                 }
             }
-            
-            lastWidth = currentWidth;
-            lastHeight = currentHeight;
-        };
-        
-        // Deteksi orientation change vs split-screen
-        window.addEventListener('orientationchange', () => {
-            orientationChangeTimeout = setTimeout(() => {
-                // Update baseline setelah orientation change
-                lastWidth = window.innerWidth;
-                lastHeight = window.innerHeight;
-                this.originalDimensions.width = window.innerWidth;
-                this.originalDimensions.height = window.innerHeight;
-            }, 500);
-        });
-        
-        window.addEventListener('resize', () => {
-            if (orientationChangeTimeout) {
-                clearTimeout(orientationChangeTimeout);
-                orientationChangeTimeout = setTimeout(() => {
-                    checkScreenSize();
-                }, 300);
-            } else {
-                checkScreenSize();
-            }
-        });
-        
-        // Enhanced Picture-in-Picture detection
-        if ('pictureInPictureEnabled' in document) {
-            document.addEventListener('enterpictureinpicture', (e) => {
-                this.isPictureInPictureActive = true;
-                console.log('PiP activated');
-                this.handleViolation('Picture-in-Picture mode activated');
-            });
-            
-            document.addEventListener('leavepictureinpicture', (e) => {
-                this.isPictureInPictureActive = false;
-                console.log('PiP deactivated');
-            });
         }
         
-        // Enhanced multi-window detection untuk Android
-        if (window.visualViewport) {
-            let lastScale = window.visualViewport.scale;
-            let lastVVWidth = window.visualViewport.width;
-            let lastVVHeight = window.visualViewport.height;
+        // Update dimensi terakhir hanya jika bukan perubahan keyboard
+        if (!keyboardActive || widthChange > 10) {
+            lastWidth = currentWidth;
+        }
+        if (!keyboardActive) {
+            lastHeight = currentHeight;
+        }
+    };
+    
+    // Deteksi orientation change vs split-screen
+    window.addEventListener('orientationchange', () => {
+        console.log('Orientation change detected');
+        orientationChangeTimeout = setTimeout(() => {
+            // Update baseline setelah orientation change
+            lastWidth = window.innerWidth;
+            lastHeight = window.innerHeight;
+            this.originalDimensions.width = window.innerWidth;
+            this.originalDimensions.height = window.innerHeight;
+            isKeyboardOpen = false; // Reset status keyboard
+            console.log('Orientation change completed - dimensions updated');
+        }, 500);
+    });
+    
+    // Event listener untuk resize dengan debouncing
+    window.addEventListener('resize', () => {
+        // Clear timeout keyboard untuk mencegah false positive
+        if (keyboardTimeout) {
+            clearTimeout(keyboardTimeout);
+        }
+        
+        if (orientationChangeTimeout) {
+            clearTimeout(orientationChangeTimeout);
+            orientationChangeTimeout = setTimeout(() => {
+                checkScreenSize();
+            }, 300);
+        } else {
+            // Gunakan timeout untuk debouncing resize events
+            keyboardTimeout = setTimeout(() => {
+                checkScreenSize();
+            }, 100);
+        }
+    });
+    
+    // Enhanced Picture-in-Picture detection (tidak berubah)
+    if ('pictureInPictureEnabled' in document) {
+        document.addEventListener('enterpictureinpicture', (e) => {
+            this.isPictureInPictureActive = true;
+            console.log('PiP activated');
+            this.handleViolation('Picture-in-Picture mode activated');
+        });
+        
+        document.addEventListener('leavepictureinpicture', (e) => {
+            this.isPictureInPictureActive = false;
+            console.log('PiP deactivated');
+        });
+    }
+    
+    // Perbaikan fungsi checkWindowIntegrity() juga diperlukan
+    
+
+// Enhanced visual viewport detection dengan perbaikan keyboard
+    if (window.visualViewport) {
+        let lastScale = window.visualViewport.scale;
+        let lastVVWidth = window.visualViewport.width;
+        let lastVVHeight = window.visualViewport.height;
+        
+        window.visualViewport.addEventListener('resize', () => {
+            const currentScale = window.visualViewport.scale;
+            const currentVVWidth = window.visualViewport.width;
+            const currentVVHeight = window.visualViewport.height;
             
-            window.visualViewport.addEventListener('resize', () => {
-                const currentScale = window.visualViewport.scale;
-                const currentVVWidth = window.visualViewport.width;
-                const currentVVHeight = window.visualViewport.height;
-                
-                // Deteksi jika ada perubahan yang tidak wajar
+            // PERBAIKAN: Deteksi keyboard dulu sebelum menganggap sebagai split-screen
+            const keyboardActive = detectVirtualKeyboard();
+            
+            if (!keyboardActive) {
+                // Hanya deteksi split-screen jika keyboard tidak aktif
                 if (currentScale < 0.9 || 
-                    Math.abs(currentVVWidth - lastVVWidth) > 100 ||
-                    Math.abs(currentVVHeight - lastVVHeight) > 100) {
+                    Math.abs(currentVVWidth - lastVVWidth) > 100) {
                     this.isSplitScreenActive = true;
                     this.handleViolation('Advanced multi-window/split-view detected');
                 }
-                
-                lastScale = currentScale;
-                lastVVWidth = currentVVWidth;
+            }
+            
+            // Update nilai terakhir
+            lastScale = currentScale;
+            lastVVWidth = currentVVWidth;
+            if (!keyboardActive) {
                 lastVVHeight = currentVVHeight;
-            });
-        }
+            }
+        });
+        
+        // Event listener khusus untuk visual viewport scroll (keyboard events)
+        window.visualViewport.addEventListener('scroll', () => {
+            // Ini biasanya triggered saat keyboard muncul/hilang
+            setTimeout(() => {
+                detectVirtualKeyboard();
+            }, 100);
+        });
     }
     
+    // Event listener tambahan untuk input focus/blur
+    document.addEventListener('focusin', (e) => {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+            setTimeout(() => {
+                detectVirtualKeyboard();
+                console.log('Input focused - checking keyboard status');
+            }, 300);
+        }
+    });
+    
+    document.addEventListener('focusout', (e) => {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+            setTimeout(() => {
+                detectVirtualKeyboard();
+                console.log('Input blurred - checking keyboard status');
+            }, 300);
+        }
+    });
+}
     setupEnhancedDesktopDetection() {
         let lastWidth = window.innerWidth;
         let lastHeight = window.innerHeight;
@@ -305,31 +403,41 @@ class SecureFormMonitor {
         }, 2000);
     }
     
-    checkWindowIntegrity() {
-        const currentRatio = window.innerWidth / window.innerHeight;
-        const originalRatio = this.originalDimensions.width / this.originalDimensions.height;
-        
-        // Jika rasio aspect berubah drastis, kemungkinan ada split-screen
-        const ratioChange = Math.abs(currentRatio - originalRatio) / originalRatio;
-        
-        if (ratioChange > 0.3 && !this.isSplitScreenActive) {
-            this.isSplitScreenActive = true;
-            this.handleViolation('Aspect ratio violation - possible split-screen detected');
-        }
-        
-        // Reset jika rasio kembali normal
-        if (ratioChange <= 0.1 && this.isSplitScreenActive) {
-            // Periksa juga ukuran absolut
-            const widthNormal = Math.abs(window.innerWidth - this.originalDimensions.width) <= 50;
-            const heightNormal = Math.abs(window.innerHeight - this.originalDimensions.height) <= 50;
-            
-            if (widthNormal && heightNormal) {
-                this.isSplitScreenActive = false;
-                console.log('Window integrity restored');
-            }
-        }
+ checkWindowIntegrity() {
+    // Deteksi keyboard virtual terlebih dahulu
+    const viewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+    const windowHeight = window.innerHeight;
+    const keyboardActive = (windowHeight - viewportHeight) > 150;
+    
+    if (keyboardActive && this.deviceInfo.isMobile) {
+        // Abaikan pemeriksaan integrity jika keyboard aktif di mobile
+        return;
     }
     
+    const currentRatio = window.innerWidth / window.innerHeight;
+    const originalRatio = this.originalDimensions.width / this.originalDimensions.height;
+    
+    // Jika rasio aspect berubah drastis, kemungkinan ada split-screen
+    const ratioChange = Math.abs(currentRatio - originalRatio) / originalRatio;
+    
+    if (ratioChange > 0.3 && !this.isSplitScreenActive) {
+        this.isSplitScreenActive = true;
+        this.handleViolation('Aspect ratio violation - possible split-screen detected');
+    }
+    
+    // Reset jika rasio kembali normal
+    if (ratioChange <= 0.1 && this.isSplitScreenActive) {
+        // Periksa juga ukuran absolut
+        const widthNormal = Math.abs(window.innerWidth - this.originalDimensions.width) <= 50;
+        const heightNormal = Math.abs(window.innerHeight - this.originalDimensions.height) <= 50;
+        
+        if (widthNormal && heightNormal) {
+            this.isSplitScreenActive = false;
+            console.log('Window integrity restored');
+        }
+    }
+}
+
     async handleViolation(violationType) {
         if (this.isFormHidden) return;
         
@@ -614,4 +722,62 @@ window.addEventListener('beforeunload', () => {
     if (window.secureMonitor) {
         window.secureMonitor.destroy();
     }
+     if (window.visualViewport) {
+        let lastScale = window.visualViewport.scale;
+        let lastVVWidth = window.visualViewport.width;
+        let lastVVHeight = window.visualViewport.height;
+        
+        window.visualViewport.addEventListener('resize', () => {
+            const currentScale = window.visualViewport.scale;
+            const currentVVWidth = window.visualViewport.width;
+            const currentVVHeight = window.visualViewport.height;
+            
+            // PERBAIKAN: Deteksi keyboard dulu sebelum menganggap sebagai split-screen
+            const keyboardActive = detectVirtualKeyboard();
+            
+            if (!keyboardActive) {
+                // Hanya deteksi split-screen jika keyboard tidak aktif
+                if (currentScale < 0.9 || 
+                    Math.abs(currentVVWidth - lastVVWidth) > 100) {
+                    this.isSplitScreenActive = true;
+                    this.handleViolation('Advanced multi-window/split-view detected');
+                }
+            }
+            
+            // Update nilai terakhir
+            lastScale = currentScale;
+            lastVVWidth = currentVVWidth;
+            if (!keyboardActive) {
+                lastVVHeight = currentVVHeight;
+            }
+        });
+        
+        // Event listener khusus untuk visual viewport scroll (keyboard events)
+        window.visualViewport.addEventListener('scroll', () => {
+            // Ini biasanya triggered saat keyboard muncul/hilang
+            setTimeout(() => {
+                detectVirtualKeyboard();
+            }, 100);
+        });
+    }
+    
+    // Event listener tambahan untuk input focus/blur
+    document.addEventListener('focusin', (e) => {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+            setTimeout(() => {
+                detectVirtualKeyboard();
+                console.log('Input focused - checking keyboard status');
+            }, 300);
+        }
+    });
+    
+    document.addEventListener('focusout', (e) => {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+            setTimeout(() => {
+                detectVirtualKeyboard();
+                console.log('Input blurred - checking keyboard status');
+            }, 300);
+        }
+    });
+
 });
