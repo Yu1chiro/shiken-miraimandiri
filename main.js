@@ -24,10 +24,10 @@ class SecureFormMonitor {
         };
         
         // Tolerance levels for different screen sizes
-        this.tolerances = {
+            this.tolerances = {
             mobile: {
-                width: 50,  // Lebih ketat untuk mobile
-                height: 90  // Keyboard bisa mempengaruhi height
+                width: 80,   // split screen horizontal ketahuan
+                height: 60   // keyboard friendly
             },
             desktop: {
                 width: 100,
