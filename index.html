@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure Form Interface</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    <style>
+        .timer-container {
+            width: 250px;
+            height: 250px;
+            position: relative;
+            margin: 0 auto;
+        }
+        
+        .timer-circle {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background: conic-gradient(#ef4444 0deg, #fee2e2 0deg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        
+        .timer-inner {
+            width: 80%;
+            height: 80%;
+            background: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            box-shadow: inset 0 5px 15px rgba(0,0,0,0.1);
+        }
+        
+        .timer-text {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #ef4444;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .timer-label {
+            font-size: 0.875rem;
+            color: #6b7280;
+            margin-top: 0.25rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        .fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <!-- Main Container -->
+    <div class="container mx-auto px-4 py-6">
+        <div class="max-w-4xl mx-auto">
+            <!-- Header -->
+            <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+                <p class="text-gray-600 text-center">Mohon tetap di tab ini selama mengisi form</p>
+                <div class="mt-4 text-center">
+                    <span class="inline-block px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
+                        Status: <span id="status">Healthy</span>
+                    </span>
+                    <span class="inline-block px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-sm ml-2">
+                        Penalty: <span id="violation-count">0</span>
+                    </span>
+                </div>
+            </div>
+            
+            <!-- Form Container -->
+            <div class="bg-white rounded-lg shadow-md overflow-hidden">
+                <iframe 
+                    id="google-form" 
+                    src="https://forms.gle/Cd1fkivy8BieBnkj6" 
+                    class="w-full h-screen"
+                    frameborder="0" 
+                    marginheight="0" 
+                    marginwidth="0">
+                    Loading...
+                </iframe>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Overlay untuk Pelanggaran -->
+    <div id="violation-overlay" class="fixed inset-0 bg-black bg-opacity-80 backdrop-blur-md  z-50 hidden">
+        <div class="flex items-center justify-center  mt-8 lg:mt-0 xl:mt-0 p-5">
+            <div class="bg-white rounded-lg p-8  max-w-md w-full text-center fade-in">
+                <div class="mb-6">
+                    <div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <svg class="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.314 15.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                        </svg>
+                    </div>
+                    <h2 class="text-xl font-bold text-red-600 mb-2">Pelanggaran Terdeteksi!</h2>
+                    <p class="text-gray-600 mb-4" id="violation-message">Anda terdeteksi melakukan browsing, atau splitscreen</p>
+                </div>
+                
+                <!-- Timer Countdown -->
+                <div class="timer-container mb-6">
+                    <div id="timer-circle" class="timer-circle">
+                        <div class="timer-inner">
+                            <div id="timer-display" class="timer-text">00:30</div>
+                            <div class="timer-label">Waktu Tersisa</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Violation Info -->
+                <div class="text-sm text-gray-600">
+                    <p>Pelanggaran ke-<span id="current-violation">1</span></p>
+                    <p class="mt-2 text-xs pulse">Mohon tunggu dan jangan berpindah tab!
+                        Form akan tersedia kembali setelah timer selesai.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+  <script src="main.js"></script>
+</body>
+</html>
