@@ -27,7 +27,7 @@ class SecureFormMonitor {
             this.tolerances = {
             mobile: {
                 width: 80,   // split screen horizontal ketahuan
-                height: 60   // keyboard friendly
+                height: 125 // keyboard friendly
             },
             desktop: {
                 width: 100,
