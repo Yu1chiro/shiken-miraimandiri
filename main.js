@@ -27,7 +27,7 @@ class SecureFormMonitor {
         this.tolerances = {
             mobile: {
                 width: 50,  // Lebih ketat untuk mobile
-                height: 80  // Keyboard bisa mempengaruhi height
+                height: 90  // Keyboard bisa mempengaruhi height
             },
             desktop: {
                 width: 100,
